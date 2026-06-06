@@ -241,6 +241,26 @@ body::before {
   font-style: italic;
 }
 
+.status {
+  margin: 0;
+  text-align: center;
+  font-size: var(--fs-12);
+  font-weight: 500;
+  color: var(--text-faint);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  min-height: 1em;
+  transition: color var(--duration-fast) var(--easing);
+}
+
+.status.is-warning {
+  color: var(--text-muted);
+}
+
+.status.is-error {
+  color: var(--accent);
+}
+
 .actions {
   display: grid;
   grid-template-columns: 2fr 1fr 1fr;

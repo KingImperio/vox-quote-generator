@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const QUOTES = [
+  const CURATED = [
     { text: "We suffer more often in imagination than in reality.", author: "Seneca", category: "philosophy" },
     { text: "You have power over your mind — not outside events. Realize this, and you will find strength.", author: "Marcus Aurelius", category: "philosophy" },
     { text: "It's not what happens to you, but how you react to it that matters.", author: "Epictetus", category: "philosophy" },
@@ -70,6 +70,76 @@
     { text: "The best way to predict the future is to invent it.", author: "Alan Kay", category: "business" }
   ];
 
+  const AUTHOR_CATEGORY = {
+    "Marcus Aurelius": "philosophy",
+    "Aristotle": "philosophy",
+    "Lao Tzu": "philosophy",
+    "Rumi": "philosophy",
+    "Herodotus": "history",
+    "Ayn Rand": "philosophy",
+    "Plato": "philosophy",
+    "Confucius": "philosophy",
+    "Epictetus": "philosophy",
+    "Seneca": "philosophy",
+    "Socrates": "philosophy",
+    "Friedrich Nietzsche": "philosophy",
+    "Søren Kierkegaard": "philosophy",
+    "Albert Camus": "philosophy",
+    "Ludwig Wittgenstein": "philosophy",
+
+    "Emily Dickinson": "literature",
+    "Franz Kafka": "literature",
+    "Herman Melville": "literature",
+    "Stephen King": "literature",
+    "William Faulkner": "literature",
+    "Carlos Ruiz Zafon": "literature",
+    "Anne Frank": "literature",
+    "Mark Manson": "literature",
+    "Virginia Woolf": "literature",
+    "Toni Morrison": "literature",
+    "Jorge Luis Borges": "literature",
+    "Ursula K. Le Guin": "literature",
+    "Chinua Achebe": "literature",
+    "James Baldwin": "literature",
+    "Italo Calvino": "literature",
+    "Octavia E. Butler": "literature",
+    "Vladimir Nabokov": "literature",
+    "Bob Dylan": "literature",
+
+    "Theodore Roosevelt": "history",
+    "Eleanor Roosevelt": "history",
+    "Martin Luther King, Jr.": "history",
+    "Amelia Earhart": "history",
+    "Napoleon Hill": "history",
+    "Winston Churchill": "history",
+    "Mahatma Gandhi": "history",
+    "Mark Twain": "history",
+    "Howard Zinn": "history",
+    "Sun Tzu": "history",
+    "Leonardo da Vinci": "history",
+    "Cicero": "history",
+
+    "Henry Ford": "business",
+    "Tony Robbins": "business",
+    "Simon Sinek": "business",
+    "Jim Rohn": "business",
+    "Zig Ziglar": "business",
+    "Brian Tracy": "business",
+    "Jeffrey Gitomer": "business",
+    "Steve Maraboli": "business",
+    "Robert Greene": "business",
+    "Steve Jobs": "business",
+    "Jeff Bezos": "business",
+    "Warren Buffett": "business",
+    "Peter Drucker": "business",
+    "Reid Hoffman": "business",
+    "Paul Graham": "business",
+    "Sara Blakely": "business",
+    "Sheryl Sandberg": "business",
+    "Kent Beck": "business",
+    "Alan Kay": "business"
+  };
+
   const CATEGORIES = [
     { id: "all", label: "All" },
     { id: "philosophy", label: "Philosophy" },
@@ -79,6 +149,10 @@
     { id: "history", label: "History" },
     { id: "business", label: "Business" }
   ];
+
+  const API_ENDPOINT = "https://zenquotes.io/api/quotes";
+  const FETCH_TIMEOUT_MS = 10000;
+  const BATCH_SIZE = 50;
 
   const els = {
     filters: document.getElementById("filters"),
@@ -94,13 +168,115 @@
   const state = {
     category: "all",
     current: null,
-    history: [],
-    shown: new Set()
+    shown: new Set(),
+    pool: [],
+    apiPool: [],
+    apiOnline: false,
+    isFetching: false,
+    pendingFetches: 0
   };
 
+  function buildPool() {
+    state.pool = CURATED.slice();
+  }
+
+  function normalizeApiQuote(item) {
+    if (!item || typeof item.q !== "string" || typeof item.a !== "string") return null;
+    const author = item.a.trim();
+    if (!author || author.toLowerCase() === "unknown") return null;
+    const category = AUTHOR_CATEGORY[author] || "literature";
+    return {
+      text: item.q.trim(),
+      author: author,
+      source: undefined,
+      category: category,
+      _src: "api"
+    };
+  }
+
+  function mergeApiQuotes(items) {
+    let added = 0;
+    for (const item of items) {
+      const q = normalizeApiQuote(item);
+      if (!q) continue;
+      const dup = state.apiPool.some(existing =>
+        existing.text === q.text && existing.author === q.author
+      );
+      if (dup) continue;
+      state.apiPool.push(q);
+      state.pool.push(q);
+      added++;
+    }
+    return added;
+  }
+
+  async function fetchWithTimeout(url, timeoutMs) {
+    const controller = new AbortController();
+    const t = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const res = await fetch(url, { signal: controller.signal, cache: "no-store" });
+      return res;
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
+  async function fetchFromApi() {
+    if (state.isFetching) return;
+    state.isFetching = true;
+    state.pendingFetches++;
+    els.newBtn.disabled = true;
+
+    try {
+      const res = await fetchWithTimeout(API_ENDPOINT, FETCH_TIMEOUT_MS);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!Array.isArray(data)) throw new Error("Bad payload");
+      const added = mergeApiQuotes(data);
+      if (added > 0) {
+        state.apiOnline = true;
+        setStatus("", null);
+      }
+    } catch {
+      state.apiOnline = false;
+      if (state.pool.length === 0) {
+        setStatus("Could not reach quote service. Showing offline set.", "warning");
+      } else if (state.apiPool.length === 0) {
+        setStatus("Live quotes unavailable. Showing curated set.", "warning");
+      }
+    } finally {
+      state.isFetching = false;
+      state.pendingFetches--;
+      els.newBtn.disabled = false;
+    }
+  }
+
+  function setStatus(message, kind) {
+    let bar = document.getElementById("status-bar");
+    if (!message) {
+      if (bar) bar.remove();
+      return;
+    }
+    if (!bar) {
+      bar = document.createElement("p");
+      bar.id = "status-bar";
+      bar.className = "status";
+      bar.setAttribute("role", "status");
+      bar.setAttribute("aria-live", "polite");
+      const actions = document.querySelector(".actions");
+      if (actions && actions.parentNode) {
+        actions.parentNode.insertBefore(bar, actions.nextSibling);
+      }
+    }
+    bar.textContent = message;
+    bar.classList.remove("is-warning", "is-error");
+    if (kind === "warning") bar.classList.add("is-warning");
+    if (kind === "error") bar.classList.add("is-error");
+  }
+
   function poolFor(category) {
-    if (category === "all") return QUOTES;
-    return QUOTES.filter(q => q.category === category);
+    if (category === "all") return state.pool;
+    return state.pool.filter(q => q.category === category);
   }
 
   function pickRandom(category, excludeCurrent) {
@@ -116,6 +292,10 @@
     return q;
   }
 
+  function quoteKey(q) {
+    return q ? `${q.author}::${q.text}` : "";
+  }
+
   function formatAttr(quote) {
     if (!quote) return "";
     const dash = "\u2014\u2009";
@@ -125,12 +305,10 @@
     return `${dash} ${quote.author}`;
   }
 
-  function setQuote(quote) {
+  function showQuote(quote) {
     if (!quote) return;
     state.current = quote;
-    state.shown.add(quote);
-    state.history.push(quote);
-
+    state.shown.add(quoteKey(quote));
     const card = els.quoteCard;
     card.classList.add("is-leaving");
     setTimeout(() => {
@@ -141,10 +319,29 @@
     }, 200);
   }
 
+  function showLoading() {
+    const card = els.quoteCard;
+    card.classList.add("is-leaving");
+    setTimeout(() => {
+      els.quoteText.textContent = "Loading…";
+      els.quoteAttr.textContent = "";
+      card.classList.remove("is-leaving");
+    }, 200);
+  }
+
+  function showError() {
+    const card = els.quoteCard;
+    card.classList.add("is-leaving");
+    setTimeout(() => {
+      els.quoteText.textContent = "No quotes available.";
+      els.quoteAttr.textContent = "Check connection and try again.";
+      card.classList.remove("is-leaving");
+    }, 200);
+  }
+
   function updateCounter() {
     const pool = poolFor(state.category);
-    const seen = Array.from(state.shown).filter(q => pool.includes(q));
-    const position = seen.length;
+    const position = state.shown.size || (state.current ? 1 : 0);
     els.counter.textContent = `Quote ${position} of ${pool.length}`;
   }
 
@@ -170,23 +367,32 @@
     if (cat === state.category) return;
     state.category = cat;
     state.shown = new Set();
-    state.history = [];
     els.filters.querySelectorAll(".pill").forEach(p => {
       const active = p.dataset.category === cat;
       p.classList.toggle("is-active", active);
       p.setAttribute("aria-pressed", active ? "true" : "false");
     });
     const next = pickRandom(cat, null);
-    setQuote(next);
+    if (next) showQuote(next);
+    if (!state.apiPool.length && state.category !== "all") {
+      fetchFromApi().catch(() => {});
+    }
   }
 
   function onNew() {
     const pool = poolFor(state.category);
-    if (state.shown.size >= pool.length) {
+    if (state.shown.size >= pool.length && pool.length > 0) {
       state.shown = new Set();
     }
     const next = pickRandom(state.category, state.current);
-    if (next) setQuote(next);
+    if (next) {
+      showQuote(next);
+    } else {
+      showError();
+    }
+    if (!state.isFetching) {
+      fetchFromApi().catch(() => {});
+    }
   }
 
   function buildShareText(quote) {
@@ -199,13 +405,7 @@
     const text = buildShareText(state.current);
     copyText(text).then(ok => {
       if (!ok) return;
-      const original = els.copyBtn.textContent;
-      els.copyBtn.textContent = "Copied";
-      els.copyBtn.classList.add("is-copied");
-      setTimeout(() => {
-        els.copyBtn.textContent = original;
-        els.copyBtn.classList.remove("is-copied");
-      }, 1500);
+      flashCopy("Copied");
     });
   }
 
@@ -219,16 +419,10 @@
     };
     if (navigator.share) {
       navigator.share(shareData).catch(() => {
-        copyText(text).then(ok => {
-          if (!ok) return;
-          flashCopy("Copied");
-        });
+        copyText(text).then(ok => { if (ok) flashCopy("Copied"); });
       });
     } else {
-      copyText(text).then(ok => {
-        if (!ok) return;
-        flashCopy("Copied");
-      });
+      copyText(text).then(ok => { if (ok) flashCopy("Copied"); });
     }
   }
 
@@ -279,6 +473,7 @@
   }
 
   function init() {
+    buildPool();
     buildFilters();
     els.filters.addEventListener("click", onFilterClick);
     els.newBtn.addEventListener("click", onNew);
@@ -286,15 +481,21 @@
     els.shareBtn.addEventListener("click", onShare);
     document.addEventListener("keydown", onKeydown);
 
-    const first = pickRandom("all", null);
-    if (first) {
-      state.current = first;
-      state.shown.add(first);
-      state.history.push(first);
-      els.quoteText.textContent = first.text;
-      els.quoteAttr.innerHTML = formatAttr(first);
-      updateCounter();
-    }
+    showLoading();
+    fetchFromApi()
+      .then(() => {
+        const first = pickRandom("all", null);
+        if (first) {
+          showQuote(first);
+        } else {
+          showError();
+        }
+      })
+      .catch(() => {
+        const first = pickRandom("all", null);
+        if (first) showQuote(first);
+        else showError();
+      });
   }
 
   if (document.readyState === "loading") {
