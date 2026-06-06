@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="color-scheme" content="light" />
+<meta name="theme-color" content="#F7F3ED" />
+<title>Vox — A Quote Generator</title>
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin />
+<link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=recoleta@400,500,600,700&display=swap" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+<a class="visually-hidden" href="#main">Skip to content</a>
+
+<h1 class="brand">Vox</h1>
+
+<main id="main" class="main">
+  <nav class="filters" id="filters" aria-label="Quote categories"></nav>
+
+  <article class="quote-card" id="quote-card" aria-live="polite">
+    <p class="quote-text" id="quote-text"></p>
+    <p class="quote-attr" id="quote-attr"></p>
+  </article>
+
+  <div class="actions" role="group" aria-label="Quote actions">
+    <button type="button" class="btn btn-primary" id="new-btn">New quote</button>
+    <button type="button" class="btn btn-secondary" id="copy-btn" aria-live="polite">Copy</button>
+    <button type="button" class="btn btn-secondary" id="share-btn">Share</button>
+  </div>
+
+  <p class="counter" id="counter" aria-live="polite">Quote 1 of 1</p>
+</main>
+
+<aside class="signature" aria-label="Attribution">Code by Oracule</aside>
+
+<script src="app.js" defer></script>
+</body>
+</html>
