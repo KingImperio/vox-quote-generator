@@ -19,7 +19,7 @@ Download or clone the repo. Open `index.html` in a browser. No build step requir
 
 ## Live demo
 
-https://
+https://kingimperio.github.io/vox-quote-generator/
 
 ## Part of
 
